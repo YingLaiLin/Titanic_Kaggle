@@ -45,7 +45,6 @@ def get_result_and_save(classfier):
 
 
 def main():
-    # TODO do something
     train = load_data("train.csv")
     train = handle_na(train)
     labels = train['Survived']
