@@ -25,17 +25,21 @@ def load_data(filename, sep=","):
 
 
 def select_feature(train_data):
-    selected_columns = ["Age", "Sex", "Pclass", "Fare"]
+    # selected_columns = ["Age", "Sex", "Pclass", "Fare"]
+    selected_columns = ["Sex"]
     train = train_data[selected_columns]
     return train
 
 
 def map_feature(train_data):
+    columns = train_data.columns
     # 将性别映射为 [0,1]
-    train_data.Sex = train_data.Sex.map(lambda sex: 0 if 'male' == sex else 1)
+    if "Sex" in columns:
+        train_data.Sex = train_data.Sex.map(lambda sex: 0 if 'male' == sex else 1)
     # 将上船费用归一化
-    train_data.Fare = (train_data.Fare - train_data.Fare.min()) / (
-                train_data.Fare.max() - train_data.Fare.min())
+    if "Fare" in columns:
+        train_data.Fare = (train_data.Fare - train_data.Fare.min()) / (
+                    train_data.Fare.max() - train_data.Fare.min())
     return train_data
 
 
