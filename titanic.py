@@ -4,6 +4,17 @@ import os
 import lightgbm as lgb
 
 
+def main():
+    # 对数据进行处理, 分用于训练模型
+    train = load_data("train.csv")
+    train = handle_na(train)
+    labels = train['Survived']
+    train = select_feature(train)
+    train = map_feature(train)
+    model = train_model(train, labels)
+    # 对测试数据进行预测并存储
+    get_result_and_save(model)
+
 
 def load_data(filename, sep=","):
     train = pd.read_csv(filename, sep=sep)
@@ -11,13 +22,17 @@ def load_data(filename, sep=","):
 
 
 def select_feature(train_data):
-    selected_columns = ["Age", "Sex"]
+    selected_columns = ["Age", "Sex", "Pclass","Fare"]
     train = train_data[selected_columns]
     return train
 
 
-def binary_sex(train_data):
+def map_feature(train_data):
+    # 将性别映射为 [0,1]
     train_data.Sex = train_data.Sex.map(lambda sex: 0 if 'male' == sex else 1)
+    # 将上船费用归一化
+    train_data.Fare = (train_data.Fare - train_data.Fare.min()) / \
+                      (train_data.Fare.max() - train_data.Fare.min())
     return train_data
 
 
@@ -34,24 +49,13 @@ def train_model(train_data, labels):
 def get_result_and_save(classfier):
     print("predict...")
     test = load_data("test.csv", ",")
-    test = binary_sex(test)
+    test = map_feature(test)
     res = classfier.predict(select_feature(test))
     print("save...")
     submission = pd.DataFrame({
-                                  'PassengerId': test['PassengerId'],
-                                  'Survived': res
-                                  })
+        'PassengerId': test['PassengerId'], 'Survived': res
+        })
     submission.to_csv("submission.csv", index=False)
-
-
-def main():
-    train = load_data("train.csv")
-    train = handle_na(train)
-    labels = train['Survived']
-    train = select_feature(train)
-    train = binary_sex(train)
-    model = train_model(train, labels)
-    get_result_and_save(model)
 
 
 if __name__ == "__main__":
