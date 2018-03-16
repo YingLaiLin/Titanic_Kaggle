@@ -1,16 +1,16 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-
+import sys
 
 # columns = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare',
 # 'Cabin', Embarked']
 def main():
     train_data, labels = get_data()
     # analysis_Pclass(train_data, [0, 1])
-    # analysis_Fare(train_data, 30)
-    analysis_Age(train_data, 30)
-
+    analysis_Fare(train_data, 30)
+    # analysis_Age(train_data, 30)
+    sys.exit(0)
 
 def get_data():
     train_data = pd.read_csv("train.csv")
@@ -50,13 +50,14 @@ def analysis_Age(train_data, num_bins):
 
 
 def analysis_Fare(train_data, num_bins):
-    survived = train_data[train_data.Survived == 1].Fare
-    not_survived = train_data[train_data.Survived == 0].Fare
-    data = [survived, not_survived]
-    plt.hist(data.dropna(), num_bins, density=1)
-    plt.xlabel('Fare')
-    plt.ylabel('count')
-    plt.legend(["Survived", "not Survived"])
+    # survived = train_data[train_data.Survived == 1].Fare
+    # not_survived = train_data[train_data.Survived == 0].Fare
+    # data = [survived, not_survived]
+    train_data.groupby("Survived").Fare.hist(alpha=0.6)
+    # plt.hist(data, num_bins, density=1)
+    # plt.xlabel('Fare')
+    # plt.ylabel('count')
+    plt.legend(["not Survived", "Survived"])
     plt.show()
 
 
