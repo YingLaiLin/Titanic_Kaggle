@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import sys
 
+
 # columns = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare',
 # 'Cabin', Embarked']
 def main():
@@ -11,6 +12,7 @@ def main():
     analysis_Fare(train_data, 30)
     # analysis_Age(train_data, 30)
     sys.exit(0)
+
 
 def get_data():
     train_data = pd.read_csv("train.csv")

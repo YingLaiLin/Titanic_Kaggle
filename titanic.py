@@ -1,15 +1,11 @@
-import pandas as pd
-import numpy as np
-import os
-import lightgbm as lgb
 import sys
 
+import lightgbm as lgb
+import pandas as pd
 
-# TODO 增加对缺失值的处理
+
 # TODO 写一个交叉验证框架
-# TODO 尝试对 lightGBM 学习参数的调整
-
-
+# TODO 可以将名字的长度加入到预测中
 def main():
     # 对数据进行处理, 分用于训练模型
     train = load_data("train.csv")
@@ -37,19 +33,15 @@ def select_feature(train_data):
 
 def map_feature(train_data):
     columns = train_data.columns
-    # 将性别映射为 [0,1]
-    if "Sex" in columns:
-        train_data.Sex = train_data.Sex.map(
-            lambda sex: 0 if 'male' == sex else 1)
-    # 因为 Fare 是一些连续值, 难以用于预测, 故将其分为 4个 区间.
+    # 直接利用哑变量方法来对变量进行处理, 也可以通过 map 来进行变换
+    data_dum = pd.get_dummies(train_data, drop_first=True)
+    # 因为 Fare 是一些连续值, 难以用于预测, 故将按照4分位数分为4个区间.[0,.25,.5,.75,1.]
     if "Fare" in columns:
-        train_data.Fare = pd.qcut(train_data.Fare, q=4, labels=False)
+        data_dum.Fare = pd.qcut(data_dum.Fare, q=4, labels=False)
     if "Age" in columns:
-        train_data.Age = pd.qcut(train_data.Age, q=4, labels=False)
-    if "Embarked" in columns:
-        train_data.Embarked = train_data.Embarked.map(
-            lambda embarked: ord(embarked) - 65)
-    return train_data
+        data_dum.Age = pd.qcut(data_dum.Age, q=4, labels=False)
+
+    return data_dum
 
 
 def handle_na(train_data):
@@ -63,19 +55,22 @@ def handle_na(train_data):
 
 def train_model(train_data, labels):
     print("train model...")
-    classifier = lgb.LGBMClassifier(learning_rate=0.3, max_depth=3)
+    classifier = lgb.LGBMRegressor(learning_rate=0.3, max_depth=3)
     return classifier.fit(train_data, labels)
 
 
 def get_result_and_save(classfier):
     print("predict...")
     test = load_data("test.csv", ",")
+    Id = test['PassengerId']
+    test = select_feature(test)
     test = map_feature(test)
-    res = classfier.predict(select_feature(test))
+
+    res = classfier.predict(test)
     res = list(map(lambda x: 1 if x > 0.5 else 0, res))
     print("save...")
     submission = pd.DataFrame({
-        'PassengerId': test['PassengerId'], 'Survived': res
+        'PassengerId': Id, 'Survived': res
         })
     submission.to_csv("submission.csv", index=False)
 
