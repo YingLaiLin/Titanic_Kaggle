@@ -26,7 +26,7 @@ def load_data(filename, sep=","):
 
 def select_feature(train_data):
     # selected_columns = ["Age", "Sex", "Pclass", "Fare"]
-    selected_columns = ["Sex"]
+    selected_columns = ["Sex", "Age", "Embarked"]
     train = train_data[selected_columns]
     return train
 
@@ -40,6 +40,8 @@ def map_feature(train_data):
     if "Fare" in columns:
         train_data.Fare = (train_data.Fare - train_data.Fare.min()) / (
                     train_data.Fare.max() - train_data.Fare.min())
+    if "Embarked" in columns:
+        train_data.Embarked = train_data.Embarked.map(lambda embarked: ord(embarked)-65)
     return train_data
 
 
