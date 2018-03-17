@@ -2,21 +2,47 @@ import sys
 
 import lightgbm as lgb
 import pandas as pd
+import logging as log
 
 
-# TODO 写一个交叉验证框架
+# TODO 将训练集和测试集整合
 # TODO 可以将名字的长度加入到预测中
+# TODO train 和 fit 的区别是什么.
+# TODO 对某些难以预测的类别的某个值进行处理
 def main():
-    # 对数据进行处理, 分用于训练模型
-    train = load_data("train.csv")
-    train = handle_na(train)
-    labels = train['Survived']
-    train = select_feature(train)
-    train = map_feature(train)
-    model = train_model(train, labels)
-    # 对测试数据进行预测并存储
-    get_result_and_save(model)
+    log.basicConfig(level=log.DEBUG,
+                    format='%(asctime)s %(filename)s[line:%(lineno)d] %('
+                           'levelname)s %(message)s',
+                    datefmt='%a, %d %b %Y %H:%M:%S', filename='tmp.log',
+                    filemode='w')
+    folds = 5
+    off_line_test(folds)
     sys.exit(0)
+
+
+def off_line_test(folds):
+    # 对数据进行处理, 分用于训练模型
+    raw_train_data = load_data("train.csv")
+    raw_train_data = handle_na(raw_train_data)
+    get_offline_result(raw_train_data, folds)
+    train = select_feature(raw_train_data)
+    train = map_feature(train)
+    model = train_model(train)
+    get_result_and_save(model)
+
+
+def get_offline_result(raw_train_data, folds):
+    split_pos = len(raw_train_data) // folds
+    for cnt in range(folds):
+        train = raw_train_data.sample(frac=1.0)
+        train = select_feature(train)
+        train = map_feature(train)
+        cv_train = train.iloc[split_pos:]
+        test = train.iloc[:split_pos]
+        model = train_model(cv_train)
+        # 对测试数据进行预测并存储
+        precision = get_result(model, test)
+        log.info("%d round, precision is %.6f" % (cnt, precision))
 
 
 def load_data(filename, sep=","):
@@ -26,7 +52,7 @@ def load_data(filename, sep=","):
 
 def select_feature(train_data):
     # selected_columns = ["Age", "Sex", "Pclass", "Fare"]
-    selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
+    selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare", "Survived"]
     train = train_data[selected_columns]
     return train
 
@@ -53,19 +79,37 @@ def handle_na(train_data):
     return train_data
 
 
-def train_model(train_data, labels):
+def train_model(train_data):
     print("train model...")
-    classifier = lgb.LGBMRegressor(learning_rate=0.3, max_depth=3)
-    return classifier.fit(train_data, labels)
+    lgb_params = {
+        'learning_rate': 0.01, 'max_depth': 6, 'num_leaves': 64,
+        'max_bin': 100, 'objective': 'mse',
+        'label': ["Survived"],
+        }
+    # 'feature_name': train_data.columns,
+    # classifier = lgb.LGBMRegressor(learning_rate=0.3, max_depth=3)
+    # return classifier.fit(train_data, labels)
+    data_train_lgb = lgb.Dataset(train_data)
+    lgb.cv(lgb_params, data_train_lgb)  # return array of loss
+    classifier = lgb.train(lgb_params, data_train_lgb)
+    return classifier
 
 
-def get_result_and_save(classfier):
-    print("predict...")
-    test = load_data("test.csv", ",")
+def get_result(classfier, test):
+    print("predict result for specified data...")
+    res = classfier.predict(test)
+    res = list(map(lambda x: 1 if x > 0.5 else 0, res))  # TOD 比较预测结果和指定结果
+    # res = pd.DataFrame
+    return (test.Survived == res).sum() / len(test)
+
+
+def get_result_and_save(classfier, filename="test.csv"):
+    print("predict result for specified data...")
+    test = load_data(filename, ",")
     Id = test['PassengerId']
-    test = select_feature(test)
+    columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
+    test = test[columns]
     test = map_feature(test)
-
     res = classfier.predict(test)
     res = list(map(lambda x: 1 if x > 0.5 else 0, res))
     print("save...")
