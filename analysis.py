@@ -6,6 +6,7 @@ import sys
 
 # columns = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare',
 # 'Cabin', Embarked']
+# TODO 使用 pearson 系数进行特征的分析, 寻求怎么画 pearson 系数的方法
 def main():
     train_data, labels = get_data()
     # analysis_Pclass(train_data, [0, 1])
@@ -65,3 +66,17 @@ def analysis_Fare(train_data, num_bins):
 
 if __name__ == "__main__":
     main()
+    # train_df[['Pclass', 'Survived']].groupby(['Pclass'],
+    #                                          as_index=False).mean().sort_values(
+    #     by='Survived', ascending=False)
+
+    #dataset['Sex'] = dataset['Sex'].map( {'female': 1, 'male': 0} ).astype(int)
+# 计算相似性
+#     dcoeff_df = pd.DataFrame(train_df.columns.delete(0))
+# coeff_df.columns = ['Feature']
+# coeff_df["Correlation"] = pd.Series(logreg.coef_[0])
+#
+# coeff_df.sort_values(by='Correlation', ascending=False)
+
+# 计算得分
+# acc_svc = round(svc.score(X_train, Y_train) * 100, 2)
