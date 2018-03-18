@@ -28,8 +28,8 @@ def off_line_test():
     raw_train_data = load_data("train.csv")
     raw_train_data = handle_na(raw_train_data)
     get_offline_result(
-        raw_train_data)  # train = select_feature(raw_train_data)  #  #  #
-    # train = map_feature(train)  # model = train_model(train)  #  #  #
+        raw_train_data)  # train = select_feature(raw_train_data)  #  #  #  #
+    #  train = map_feature(train)  # model = train_model(train)  #  #  #  #
     # get_result_and_save(model)
 
 
@@ -45,7 +45,7 @@ def get_offline_result(raw_train_data):
     final_train_set = lgb.Dataset(label=raw_train_data.pop('Survived'),
                                   data=raw_train_data)
     lgb_params = {
-        'boosting': 'dart', 'learing_rate': 0.05, 'min_data_in_leaf': 20,
+        'boosting': 'dart', 'learing_rate': 0.01, 'min_data_in_leaf': 20,
         'feature_fraction': 0.7, 'metric': 'binary_logloss', 'drop_rate': 0.15,
         'application': 'binary',
         }
@@ -56,7 +56,7 @@ def get_offline_result(raw_train_data):
                     num_boost_round=500, early_stopping_rounds=100,
                     verbose_eval=20)
     optimal = clf.best_iteration
-    fig, axs = plt.subplots(1, 2, figsize=[15, 4])
+    fig, axs = plt.subplots(2, 1, figsize=[8, 8])
 
     # Plot the log loss during training
     axs[0].plot(evaluations['Train']['binary_logloss'], label='Train')
@@ -89,10 +89,10 @@ def get_offline_result(raw_train_data):
     selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
     test = test[selected_columns]
     test = map_feature(test)
-    res = list(map(lambda x: 0 if x == 1.0 else 1, np.round(clf.predict(test))))
+    res = list(map(lambda x: 1 if x == 1.0 else 0, np.round(clf.predict(test))))
     pd.DataFrame({
-                     'PassengerId': Id, 'Survived': res
-                 }).to_csv('submission.csv', index=False)
+        'PassengerId': Id, 'Survived': res
+        }).to_csv('submission.csv', index=False)
 
 
 def load_data(filename, sep=","):
@@ -102,7 +102,8 @@ def load_data(filename, sep=","):
 
 def select_feature(train_data):
     # selected_columns = ["Age", "Sex", "Pclass", "Fare"]
-    selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare", "Survived"]
+    # selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare", "Survived"]
+    selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
     train = train_data[selected_columns]
     return train
 
