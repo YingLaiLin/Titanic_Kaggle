@@ -13,13 +13,12 @@ from sklearn.metrics import (
 
 # TODO 可以将名字的长度加入到预测中
 # TODO 对某些难以预测的类别的某个值进行处理
-# TODO 整合test and train
 def main():
     log.basicConfig(level=log.DEBUG,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %('
                            'levelname)s %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S', filename='tmp.log',
-                    filemode='w')
+                    filemode='a+')
     off_line_test()
     sys.exit(0)
 
@@ -27,31 +26,31 @@ def main():
 def off_line_test():
     # 对数据进行处理, 分用于训练模型
     raw_train_data = load_data("train.csv")
-    # test = load_data("test.csv")
+    test_data = load_data("test.csv")
+    train_data = pd.concat([raw_train_data, test_data])
+    train_data = handle_na(train_data)
+    get_offline_result(train_data, len(raw_train_data))
 
-    raw_train_data = handle_na(raw_train_data)
 
-    get_offline_result(raw_train_data)
-
-
-def get_offline_result(raw_train_data):
+def get_offline_result(raw_train_data, labeld_size):
     train = select_features(raw_train_data)
     train = map_feature(train)
-    x_train, x_test, y_train, y_test = train_test_split(train,
-                                                        raw_train_data.Survived,
+    x_train, x_test, y_train, y_test = train_test_split(train[:labeld_size],
+                                                        raw_train_data[
+                                                        :labeld_size].Survived,
                                                         test_size=0.2,
                                                         random_state=42)
     train_data = lgb.Dataset(data=x_train, label=y_train)
     test_data = lgb.Dataset(data=x_test, label=y_test)
-    lables = raw_train_data.Survived
-    final_train_set = select_features(raw_train_data)
+    labels = raw_train_data[:labeld_size].Survived
+    final_train_set = select_features(raw_train_data[:labeld_size])
     final_train_set = map_feature(final_train_set)
-    final_train_set = lgb.Dataset(data=final_train_set, label=lables,
+    final_train_set = lgb.Dataset(data=final_train_set, label=labels,
                                   free_raw_data=False)
     loss_evaluation = 'binary_logloss'
     lgb_params = {
-        'boosting': 'dart', 'learing_rate': 0.01, 'min_data_in_leaf': 20,
-        'num_leaves': 41, 'feature_fraction': 0.7, 'metric': loss_evaluation,
+        'boosting': 'dart', 'learning_rate': 0.05, 'min_data_in_leaf': 20,
+        'num_leaves': 40, 'feature_fraction': 0.7, 'metric': loss_evaluation,
         'drop_rate': 0.15, 'application': 'binary',
         }
     evaluations = {}
@@ -69,24 +68,13 @@ def get_offline_result(raw_train_data):
         'Precision score = \t {}'.format(precision_score(y_test, predicted)))
     log.info('Recall score = \t {}'.format(recall_score(y_test, predicted)))
     log.info('F1 score = \t {}'.format(f1_score(y_test, predicted)))
-
-    test = load_data("test.csv")
-    Id = test.PassengerId
-    selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
-    test = handle_na(test)
-    test = test[selected_columns]
-    test = map_feature(test)
-
+    log.info("------------------------------\n")
+    # get the final model
     optimal_boost_rounds = clf.best_iteration
     clf_final = lgb.train(train_set=final_train_set, params=lgb_params,
                           num_boost_round=optimal_boost_rounds)
-
-    res = list(
-        map(lambda x: 1 if x == 1.0 else 0, np.round(clf_final.predict(test))))
-    # res = np.round(clf_final.predict(test)).astype(int)
-    pd.DataFrame({
-        'PassengerId': Id, 'Survived': res
-        }).to_csv('submission.csv', index=False)
+    evaluate_and_save(clf_final, train, labeld_size,
+                      raw_train_data[labeld_size:].PassengerId)
 
 
 def load_data(filename, sep=","):
@@ -94,11 +82,24 @@ def load_data(filename, sep=","):
 
 
 def select_features(train_data):
-    # selected_columns = ["Age", "Sex", "Pclass", "Fare"]
-    # selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare",
-    # "Survived"]
-    selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
+    # 提取是否有家人这一特征
+    train_data['Alone'] = (train_data['SibSp'] == 0) & (train_data['Parch'] == 0)
+    # 提取名字作为特征
+    train_data['Title'] = train_data.Name.str.extract(r'([A-Za-z]+)\.', expand=False)
+    train_data['Title'] = train_data['Title'].replace(
+        ['Lady', 'Countess', 'Capt', 'Col', 'Don', 'Dr', 'Major', 'Rev', 'Sir',
+         'Jonkheer', 'Dona'], 'Rare')
+
+    train_data['Title'] = train_data['Title'].replace('Mlle', 'Miss')
+    train_data['Title'] = train_data['Title'].replace('Ms', 'Miss')
+    train_data['Title'] = train_data['Title'].replace('Mme', 'Mrs')
+    title_mapping = {"Mr": 1, "Miss": 2, "Mrs": 3, "Master": 4, "Rare": 5}
+    train_data.Title = train_data.Title.map(title_mapping)
+    selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare",
+                        "Alone", "Title"]
     train = train_data[selected_columns]
+    # 缺失姓名的值默认为 0
+    train_data.Title = train_data.Title.fillna(0)
     return train
 
 
@@ -121,6 +122,7 @@ def handle_na(train_data):
     train_data.Fare = train_data.Fare.fillna(train_data.Fare.median())
     # 上船港口默认为 S
     train_data.Embarked = train_data.Embarked.fillna('S')
+
     return train_data
 
 
@@ -146,6 +148,16 @@ def visualize_loss(clf, evaluations, loss_evaluation):
     axs[1].set_title('Feature importance')
 
     plt.show()
+
+
+def evaluate_and_save(clf, train, labeled_size, Ids):
+    test = train[labeled_size:]
+    res = list(
+        map(lambda x: 1 if x == 1.0 else 0, np.round(clf.predict(test))))
+
+    pd.DataFrame({
+        'PassengerId': Ids, 'Survived': res
+        }).to_csv('submission.csv', index=False)
 
 
 if __name__ == "__main__":

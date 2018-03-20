@@ -9,8 +9,9 @@ import sys
 # TODO 使用 pearson 系数进行特征的分析, 寻求怎么画 pearson 系数的方法
 def main():
     train_data, labels = get_data()
+    analysis_Name(train_data)
     # analysis_Pclass(train_data, [0, 1])
-    analysis_Fare(train_data, 30)
+    # analysis_Fare(train_data, 30)
     # analysis_Age(train_data, 30)
     sys.exit(0)
 
@@ -21,6 +22,14 @@ def get_data():
     del train_data['PassengerId']
     return train_data, labels
 
+
+def analysis_Name(train_data):
+    print(train_data.describe(include=['O']))
+    for dataset in train_data:
+        dataset['Title'] = dataset.Name.str.extract(' ([A-Za-z]+)\.',
+                                                    expand=False)
+
+    pd.crosstab(train_data['Title'], train_data['Sex'])
 
 """
     分析 Pclass 是否对 Survived 造成影响
