@@ -13,6 +13,7 @@ from sklearn.metrics import (
 
 # TODO 可以将名字的长度加入到预测中
 # TODO 对某些难以预测的类别的某个值进行处理
+# TODO 整合test and train
 def main():
     log.basicConfig(level=log.DEBUG,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %('
@@ -26,15 +27,15 @@ def main():
 def off_line_test():
     # 对数据进行处理, 分用于训练模型
     raw_train_data = load_data("train.csv")
+    # test = load_data("test.csv")
+
     raw_train_data = handle_na(raw_train_data)
-    get_offline_result(
-        raw_train_data)  # train = select_feature(raw_train_data)  #  #  #  #
-    #  train = map_feature(train)  # model = train_model(train)  #  #  #  #
-    # get_result_and_save(model)
+
+    get_offline_result(raw_train_data)
 
 
 def get_offline_result(raw_train_data):
-    train = select_feature(raw_train_data)
+    train = select_features(raw_train_data)
     train = map_feature(train)
     x_train, x_test, y_train, y_test = train_test_split(train,
                                                         raw_train_data.Survived,
@@ -42,67 +43,60 @@ def get_offline_result(raw_train_data):
                                                         random_state=42)
     train_data = lgb.Dataset(data=x_train, label=y_train)
     test_data = lgb.Dataset(data=x_test, label=y_test)
-    final_train_set = lgb.Dataset(label=raw_train_data.pop('Survived'),
-                                  data=raw_train_data)
+    lables = raw_train_data.Survived
+    final_train_set = select_features(raw_train_data)
+    final_train_set = map_feature(final_train_set)
+    final_train_set = lgb.Dataset(data=final_train_set, label=lables,
+                                  free_raw_data=False)
+    loss_evaluation = 'binary_logloss'
     lgb_params = {
         'boosting': 'dart', 'learing_rate': 0.01, 'min_data_in_leaf': 20,
-        'feature_fraction': 0.7, 'metric': 'binary_logloss', 'drop_rate': 0.15,
-        'application': 'binary',
+        'num_leaves': 41, 'feature_fraction': 0.7, 'metric': loss_evaluation,
+        'drop_rate': 0.15, 'application': 'binary',
         }
     evaluations = {}
+
     clf = lgb.train(params=lgb_params, train_set=train_data,
                     valid_sets=[train_data, test_data],
                     valid_names=['Train', 'Test'], evals_result=evaluations,
                     num_boost_round=500, early_stopping_rounds=100,
                     verbose_eval=20)
-    optimal = clf.best_iteration
-    fig, axs = plt.subplots(2, 1, figsize=[8, 8])
 
-    # Plot the log loss during training
-    axs[0].plot(evaluations['Train']['binary_logloss'], label='Train')
-    axs[0].plot(evaluations['Test']['binary_logloss'], label='Test')
-    axs[0].set_ylabel('Log loss')
-    axs[0].set_xlabel('Boosting round')
-    axs[0].set_title('Training performance')
-    axs[0].legend()
-
-    # Plot feature importance
-    importances = pd.DataFrame({
-        'features': clf.feature_name(), 'importance': clf.feature_importance()
-        }).sort_values('importance', ascending=False)
-    axs[1].bar(x=np.arange(len(importances)), height=importances['importance'])
-    axs[1].set_xticks(np.arange(len(importances)))
-    axs[1].set_xticklabels(importances['features'])
-    axs[1].set_ylabel('Feature importance (# times used to split)')
-    axs[1].set_title('Feature importance')
-
-    plt.show()
+    visualize_loss(clf, evaluations, loss_evaluation)
     predicted = np.round(clf.predict(x_test))
     log.info('Accuracy score = \t {}'.format(accuracy_score(y_test, predicted)))
     log.info(
         'Precision score = \t {}'.format(precision_score(y_test, predicted)))
-    log.info('Recall score =   \t {}'.format(recall_score(y_test, predicted)))
-    log.info('F1 score =      \t {}'.format(f1_score(y_test, predicted)))
+    log.info('Recall score = \t {}'.format(recall_score(y_test, predicted)))
+    log.info('F1 score = \t {}'.format(f1_score(y_test, predicted)))
 
-    test = pd.read_csv("test.csv", sep=",")
+    test = load_data("test.csv")
     Id = test.PassengerId
     selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
+    test = handle_na(test)
     test = test[selected_columns]
     test = map_feature(test)
-    res = list(map(lambda x: 1 if x == 1.0 else 0, np.round(clf.predict(test))))
+
+    optimal_boost_rounds = clf.best_iteration
+    clf_final = lgb.train(train_set=final_train_set, params=lgb_params,
+                          num_boost_round=optimal_boost_rounds)
+
+    res = list(
+        map(lambda x: 1 if x == 1.0 else 0, np.round(clf_final.predict(test))))
+    # res = np.round(clf_final.predict(test)).astype(int)
     pd.DataFrame({
         'PassengerId': Id, 'Survived': res
         }).to_csv('submission.csv', index=False)
 
 
 def load_data(filename, sep=","):
-    train = pd.read_csv(filename, sep=sep)
-    return train
+    return pd.read_csv(filename, sep=sep)
 
 
-def select_feature(train_data):
+def select_features(train_data):
     # selected_columns = ["Age", "Sex", "Pclass", "Fare"]
-    # selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare", "Survived"]
+    # selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare",
+    # "Survived"]
     selected_columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
     train = train_data[selected_columns]
     return train
@@ -130,43 +124,28 @@ def handle_na(train_data):
     return train_data
 
 
-def train_model(train_data):
-    print("train model...")
-    lgb_params = {
-        'learning_rate': 0.01, 'max_depth': 6, 'num_leaves': 64, 'max_bin': 100,
-        'objective': 'mse', 'label': ["Survived"],
-        }
-    # 'feature_name': train_data.columns,
-    # classifier = lgb.LGBMRegressor(learning_rate=0.3, max_depth=3)
-    # return classifier.fit(train_data, labels)
-    data_train_lgb = lgb.Dataset(train_data)
-    cv_model = lgb.cv(lgb_params, data_train_lgb)  # return array of loss
-    classifier = lgb.train(lgb_params, data_train_lgb)
-    return classifier
+def visualize_loss(clf, evaluations, loss_evaluation):
+    fig, axs = plt.subplots(2, 1, figsize=[8, 10])
 
+    # Plot the log loss during training
+    axs[0].plot(evaluations['Train'][loss_evaluation], label='Train')
+    axs[0].plot(evaluations['Test'][loss_evaluation], label='Test')
+    axs[0].set_ylabel('Log loss')
+    axs[0].set_xlabel('Boosting round')
+    axs[0].set_title('Training performance')
+    axs[0].legend()
 
-def get_result(classfier, test):
-    print("predict result for specified data...")
-    res = classfier.predict(test)
-    res = list(map(lambda x: 1 if x > 0.5 else 0, res))  # TOD 比较预测结果和指定结果
-    # res = pd.DataFrame
-    return (test.Survived == res).sum() / len(test)
+    # Plot feature importance
+    importances = pd.DataFrame({
+        'features': clf.feature_name(), 'importance': clf.feature_importance()
+        }).sort_values('importance', ascending=False)
+    axs[1].bar(x=np.arange(len(importances)), height=importances['importance'])
+    axs[1].set_xticks(np.arange(len(importances)))
+    axs[1].set_xticklabels(importances['features'])
+    axs[1].set_ylabel('Feature importance (# times used to split)')
+    axs[1].set_title('Feature importance')
 
-
-def get_result_and_save(classfier, filename="test.csv"):
-    print("predict result for specified data...")
-    test = load_data(filename, ",")
-    Id = test['PassengerId']
-    columns = ["Sex", "Age", "Embarked", "Pclass", "Fare"]
-    test = test[columns]
-    test = map_feature(test)
-    res = classfier.predict(test)
-    res = list(map(lambda x: 1 if x > 0.5 else 0, res))
-    print("save...")
-    submission = pd.DataFrame({
-        'PassengerId': Id, 'Survived': res
-        })
-    submission.to_csv("submission.csv", index=False)
+    plt.show()
 
 
 if __name__ == "__main__":
