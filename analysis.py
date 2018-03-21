@@ -7,6 +7,7 @@ import sys
 # columns = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare',
 # 'Cabin', Embarked']
 # TODO 使用 pearson 系数进行特征的分析, 寻求怎么画 pearson 系数的方法
+# TODO  添加对 Name 的分析.
 def main():
     train_data, labels = get_data()
     analysis_Name(train_data)
