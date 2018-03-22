@@ -18,3 +18,5 @@
 - [How a Data Scientist Beat the Odds](https://www.kaggle.com/ldfreeman3/a-data-science-framework-to-achieve-99-accuracy)
 - [Titanic Top 4% with ensemble modeling
 ](https://www.kaggle.com/yassineghouzam/titanic-top-4-with-ensemble-modeling)
+- [**Applying LightGBM to Titanic dataset**
+](https://www.kaggle.com/shep312/applying-lightgbm-to-titanic-dataset)

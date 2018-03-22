@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import logging as log
 import sys
 
@@ -10,11 +11,13 @@ from sklearn.metrics import (accuracy_score, classification_report)
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import train_test_split
 
-import config
+from src import config
 
 
+# TODO 引入 stacking
 # TODO 引入交叉验证选择最佳模型
 # TODO 合并 map_feature 和 select_feature 两个函数
+# TODO 为 train_model 的过程添加可视化过程
 def main():
     config_log()
     train_data, labeled_size, labels, Ids = pre_process_data()
@@ -24,7 +27,7 @@ def main():
     sys.exit(0)
 
 
-def config_log(log_filename="tmp.log"):
+def config_log(log_filename=config.log_file_name):
     """
         配置输出格式
     :param log_filename: log 日志文件的存放地址
@@ -37,7 +40,8 @@ def config_log(log_filename="tmp.log"):
                     filemode='a+')
 
 
-def pre_process_data(train_filename="train.csv", test_filename="test.csv"):
+def pre_process_data(train_filename=config.train_file_name,
+                     test_filename=config.test_file_name):
     """
         将测试数据和训练数据共同进行缺失值、特征选择处理
     :param train_filename:
@@ -54,7 +58,7 @@ def pre_process_data(train_filename="train.csv", test_filename="test.csv"):
     return integrated_data, len(train_data), labels, Ids
 
 
-def load_data(filename, sep=","):
+def load_data(filename, sep=config.csv_seperator):
     return pd.read_csv(filename, sep=sep)
 
 
@@ -77,8 +81,6 @@ def get_offline_result(train_data, labeled_size, labels):
                             scale_pos_weight=1)
     grid = GridSearchCV(clf, gridParams, verbose=1, cv=5, n_jobs=-1)
     grid.fit(x_train, y_train)
-    predicted = np.round(grid.predict(x_test))
-    record_performance(y_test, predicted)
     return grid
 
 
@@ -99,14 +101,15 @@ def train_model(grid, train, labeled_size, labels):
         params['reg_lambda'] = grid.best_params_['reg_lambda']
     x_train, x_test, y_train, y_test = train_test_split(train[:labeled_size],
                                                         labels[:labeled_size],
-                                                        test_size=0.20,
+                                                        test_size=config.split_size,
                                                         random_state=42)
     train_data = lgb.Dataset(data=x_train, label=y_train)
     test_data = lgb.Dataset(data=x_test, label=y_test)
     gbm = lgb.train(params, train_set=train_data, num_boost_round=10000,
                     valid_sets=[train_data, test_data],
                     early_stopping_rounds=50, verbose_eval=50)
-
+    predicted = np.round(grid.predict(x_test))
+    record_performance(y_test, predicted)
     show_model_performance(gbm)
     return gbm
 
@@ -118,7 +121,7 @@ def evaluate_and_save(clf, train, labeled_size, Ids):
 
     pd.DataFrame({
         'PassengerId': Ids[labeled_size:], 'Survived': res
-        }).to_csv('submission.csv', index=False)
+        }).to_csv(config.submission_file_name, index=False)
 
 
 def extract_features(train_data):
