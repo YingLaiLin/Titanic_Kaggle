@@ -17,7 +17,7 @@ from src import config
 # TODO 引入 stacking
 # TODO 引入交叉验证选择最佳模型
 # TODO 合并 map_feature 和 select_feature 两个函数
-# TODO 为 train_model 的过程添加可视化过程
+# TODO 为 train_model 的过程添加可视化过程 **
 def main():
     config_log()
     train_data, labeled_size, labels, Ids = pre_process_data()
@@ -67,18 +67,21 @@ def get_offline_result(train_data, labeled_size, labels):
         train_data[:labeled_size], labels[:labeled_size],
         test_size=config.split_size, random_state=42)
     gridParams = {
-        'learning_rate': [0.001], 'n_estimators': [8, 10, 16, 24],
-        'num_leaves': [6, 8, 12, 16], 'boosting_type': ['dart'],
+        'learning_rate': config.learning_rates,
+        'n_estimators': config.n_estimators, 'num_leaves': [6, 8, 12, 16],
+        'boosting_type': config.boosting_type,
         'objective': ['binary'], 'random_state': [501],  # Updated from 'seed'
-        'colsample_bytree': [0.64, 0.65, 0.66], 'subsample': [0.7, 0.75],
-        'reg_alpha': [1, 1.2], 'reg_lambda': [1, 1.2, 1.4],
+        # 'colsample_bytree': [0.64, 0.65, 0.66], 'subsample': [0.7, 0.75],
+        # 'reg_alpha': [1, 1.2], 'reg_lambda': [1, 1.2, 1.4],
         }
-    clf = lgb.LGBMRegressor(boosting_type='dart', objective='binary', nthread=5,
-                            silent=True, max_depth=-1, max_bin=128,
-                            subsample_for_bin=500, subsample=1,
-                            subsample_freq=1, min_split_gain=0.5,
-                            min_child_weight=1, min_child_samples=5,
-                            scale_pos_weight=1)
+    # clf = lgb.LGBMRegressor(boosting_type='dart', objective='binary',
+    # nthread=5,
+    #                         silent=True, max_depth=-1, max_bin=128,
+    #                         subsample_for_bin=500, subsample=1,
+    #                         subsample_freq=1, min_split_gain=0.5,
+    #                         min_child_weight=1, min_child_samples=5,
+    #                         scale_pos_weight=1)
+    clf = lgb.LGBMRegressor()
     grid = GridSearchCV(clf, gridParams, verbose=1, cv=5, n_jobs=-1)
     grid.fit(x_train, y_train)
     return grid
@@ -86,35 +89,33 @@ def get_offline_result(train_data, labeled_size, labels):
 
 def train_model(grid, train, labeled_size, labels):
     params = {
-        'boosting_type': 'dart', 'max_depth': -1, 'objective': 'binary',
-        'nthread': 5, 'silent': True, 'max_bin': 512, 'subsample_for_bin': 200,
-        'subsample': grid.best_params_['subsample'], 'subsample_freq': 1,
-        'min_split_gain': 0.5, 'min_child_weight': 1, 'min_child_samples': 5,
-        'scale_pos_weight': 1, 'num_class': 1, 'metric': 'binary_error'
+        'boosting_type': 'dart', 'objective': 'binary', 'metric': config.metric,
+        'learning_rate': 0.01, 'max_depth': -1, # 根据 GridSearchCV 中的参数进行设置
+        'nthread': 5, 'n_estimators': 16, 'num_leaves': 16, 'random_state': 501,
+
         }
-    if grid is None:
-        params['num_leaves'] = grid.best_params_['num_leaves']
-        params['learning_rate'] = grid.best_params_['learning_rate']
-        params['subsample'] = grid.best_params_['subsample']
-        params['colsample_bytree'] = grid.best_params_['colsample_bytree'],
-        params['reg_alpha'] = grid.best_params_['reg_alpha']
-        params['reg_lambda'] = grid.best_params_['reg_lambda']
     x_train, x_test, y_train, y_test = train_test_split(train[:labeled_size],
                                                         labels[:labeled_size],
                                                         test_size=config.split_size,
                                                         random_state=42)
     train_data = lgb.Dataset(data=x_train, label=y_train)
     test_data = lgb.Dataset(data=x_test, label=y_test)
-    gbm = lgb.train(params, train_set=train_data, num_boost_round=10000,
+    eval_results = {}
+    log.info('\ngrid best params {}'.format(grid.best_params_))
+    gbm = lgb.train(params, train_set=train_data, num_boost_round=2000,
                     valid_sets=[train_data, test_data],
-                    early_stopping_rounds=50, verbose_eval=50)
-    predicted = np.round(grid.predict(x_test))
+                    evals_result=eval_results, verbose_eval=50,
+                    early_stopping_rounds=config.early_stopping_rounds, )
+    log.info("best iterations {}".format(gbm.best_iteration))
+    predicted = np.round(gbm.predict(x_test))
     record_performance(y_test, predicted)
-    show_model_performance(gbm)
+    show_model_performance(gbm, eval_results)
     return gbm
 
 
 def evaluate_and_save(clf, train, labeled_size, Ids):
+    # 存储模型参数
+    clf.save_model(config.params_file_name)
     test = train[labeled_size:]
     res = list(map(lambda x: 1 if x == 1.0 else 0, np.round(
         clf.predict(test, num_iteration=clf.best_iteration))))
@@ -209,9 +210,14 @@ def visualize_loss(clf, evaluations, loss_evaluation):
     plt.show()
 
 
-def show_model_performance(gbm):
+def show_model_performance(gbm, evals_result):
     # show model importance
-    lgb.plot_importance(gbm)
+    # lgb.plot_importance(gbm)
+    # Show Decision
+    # lgb.plot_tree(gbm, figsize=(20,8), show_info=['split_gain'])
+    # graph = lgb.create_tree_digraph(gbm, tree_index=83, name='Tree84')
+    # graph.render(view=True)
+    lgb.plot_metric(evals_result, config.metric)
     plt.show()
 
 
