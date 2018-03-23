@@ -3,7 +3,6 @@ import logging as log
 import sys
 
 import lightgbm as lgb
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -17,7 +16,7 @@ from src import config
 # TODO 引入 stacking
 # TODO 引入交叉验证选择最佳模型
 # TODO 合并 map_feature 和 select_feature 两个函数
-# TODO 为 train_model 的过程添加可视化过程 **
+
 def main():
     config_log()
     train_data, labeled_size, labels, Ids = pre_process_data()
@@ -65,23 +64,18 @@ def load_data(filename, sep=config.csv_seperator):
 def get_offline_result(train_data, labeled_size, labels):
     x_train, x_test, y_train, y_test = train_test_split(
         train_data[:labeled_size], labels[:labeled_size],
-        test_size=config.split_size, random_state=42)
+        test_size=config.cv_split_size, random_state=42)
     gridParams = {
-        'learning_rate': config.learning_rates,
-        'n_estimators': config.n_estimators, 'num_leaves': [6, 8, 12, 16],
-        'boosting_type': config.boosting_type,
-        'objective': ['binary'], 'random_state': [501],  # Updated from 'seed'
+        'learning_rate': config.cv_learning_rates,
+        'n_estimators': config.cv_n_estimators,
+        'num_leaves': config.cv_num_leaves,
+        'boosting_type': config.cv_boosting_type, 'objective': ['binary'],
+        'lambda_l1': config.cv_lambda_l1, 'lambda_l2': config.cv_lambda_l2,
+        'random_state': [501], 'feature_fraction': config.cv_feature_fraction,
         # 'colsample_bytree': [0.64, 0.65, 0.66], 'subsample': [0.7, 0.75],
         # 'reg_alpha': [1, 1.2], 'reg_lambda': [1, 1.2, 1.4],
         }
-    # clf = lgb.LGBMRegressor(boosting_type='dart', objective='binary',
-    # nthread=5,
-    #                         silent=True, max_depth=-1, max_bin=128,
-    #                         subsample_for_bin=500, subsample=1,
-    #                         subsample_freq=1, min_split_gain=0.5,
-    #                         min_child_weight=1, min_child_samples=5,
-    #                         scale_pos_weight=1)
-    clf = lgb.LGBMRegressor()
+    clf = lgb.LGBMRegressor(boosting_type='dart', objective='binary')
     grid = GridSearchCV(clf, gridParams, verbose=1, cv=5, n_jobs=-1)
     grid.fit(x_train, y_train)
     return grid
@@ -89,14 +83,17 @@ def get_offline_result(train_data, labeled_size, labels):
 
 def train_model(grid, train, labeled_size, labels):
     params = {
-        'boosting_type': 'dart', 'objective': 'binary', 'metric': config.metric,
-        'learning_rate': 0.01, 'max_depth': -1, # 根据 GridSearchCV 中的参数进行设置
-        'nthread': 5, 'n_estimators': 16, 'num_leaves': 16, 'random_state': 501,
-
+        'boosting_type': config.boosting_type, 'objective': 'binary',
+        'metric': config.metric, 'learning_rate': config.learning_rate,
+        # 根据 GridSearchCV 中的参数进行设置
+        'nthread': config.n_threads, 'n_estimators': config.n_estimators,
+        'feature_fraction': 0.9, 'random_state': 501,
+        'lambda_l1': config.lambda_l1, 'lambda_l2': config.lambda_l2,
+        'max_depth': -1, 'num_leaves': config.num_leaves,
         }
     x_train, x_test, y_train, y_test = train_test_split(train[:labeled_size],
                                                         labels[:labeled_size],
-                                                        test_size=config.split_size,
+                                                        test_size=config.cv_split_size,
                                                         random_state=42)
     train_data = lgb.Dataset(data=x_train, label=y_train)
     test_data = lgb.Dataset(data=x_test, label=y_test)
@@ -105,7 +102,7 @@ def train_model(grid, train, labeled_size, labels):
     gbm = lgb.train(params, train_set=train_data, num_boost_round=2000,
                     valid_sets=[train_data, test_data],
                     evals_result=eval_results, verbose_eval=50,
-                    early_stopping_rounds=config.early_stopping_rounds, )
+                    early_stopping_rounds=config.early_stopping_rounds)
     log.info("best iterations {}".format(gbm.best_iteration))
     predicted = np.round(gbm.predict(x_test))
     record_performance(y_test, predicted)
@@ -177,47 +174,18 @@ def handle_na(train_data):
     return train_data
 
 
-# @deprecated
-def visualize_loss(clf, evaluations, loss_evaluation):
-    fig = plt.figure(figsize=(60, 40))
-    gs = gridspec.GridSpec(6, 6)
-    # Plot the log loss and AUC during training
-    ax_loss = plt.subplot(gs[0, :2])
-    ax_loss.plot(evaluations['Train'][loss_evaluation[0]], label='Train')
-    ax_loss.plot(evaluations['Test'][loss_evaluation[0]], label='Test')
-    ax_loss.plot(evaluations['Train'][loss_evaluation[1]], label='Train')
-    ax_loss.plot(evaluations['Test'][loss_evaluation[1]], label='Test')
-    ax_loss.set_ylabel('Log loss')
-    ax_loss.set_xlabel('Boosting round')
-    ax_loss.set_title('Training performance')
-    ax_loss.legend()
-    # Plot feature importance
-    ax_feature_important = plt.subplot(gs[1, :2])
-    feature_importance = pd.DataFrame({
-        'features': clf.feature_name(), 'importance': clf.feature_importance()
-        }).sort_values('importance', ascending=False)
-    ax_feature_important.bar(x=np.arange(len(feature_importance)),
-                             height=feature_importance['importance'])
-    ax_feature_important.set_xticks(np.arange(len(feature_importance)))
-    ax_feature_important.set_xticklabels(feature_importance['features'])
-    ax_feature_important.set_ylabel(
-        'Feature importance (# times used to split)')
-    ax_feature_important.set_title('Feature importance')
-
-    # plot decision tree
-    ax_decision_tree = plt.subplot(gs[2:, :-1])
-    lgb.plot_tree(clf, ax=ax_decision_tree)
-    plt.show()
-
-
 def show_model_performance(gbm, evals_result):
     # show model importance
     # lgb.plot_importance(gbm)
-    # Show Decision
-    # lgb.plot_tree(gbm, figsize=(20,8), show_info=['split_gain'])
-    # graph = lgb.create_tree_digraph(gbm, tree_index=83, name='Tree84')
-    # graph.render(view=True)
-    lgb.plot_metric(evals_result, config.metric)
+    # Show Decision Tree
+    if config.is_plot_tree:
+        graph = lgb.create_tree_digraph(gbm, name='Tree84')
+        graph.render(view=True)
+    if config.is_show_metric:
+        fig, axs = plt.subplots(2, 1, figsize=(8, 10))
+        for index in range(len(config.metric)):
+            lgb.plot_metric(evals_result, config.metric[index],
+                            title=config.metric[index], ax=axs[index])
     plt.show()
 
 
