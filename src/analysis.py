@@ -1,37 +1,56 @@
+
 import sys
 
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from src import config
+
 
 # columns = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare',
 # 'Cabin', Embarked']
-# TODO 使用 pearson 系数进行特征的分析, 寻求怎么画 pearson 系数的方法
 # TODO  添加对 Name 的分析.
 def main():
     train_data, labels = get_data()
-    analysis_Name(train_data)
+    # analysis_Name(train_data)
     # analysis_Pclass(train_data, [0, 1])
     # analysis_Fare(train_data, 30)
     # analysis_Age(train_data, 30)
+    get_pearson(train_data)
     sys.exit(0)
 
 
-def get_data():
-    train_data = pd.read_csv("train.csv")
+def get_data(train_file_name=config.train_file_name, sep=config.csv_seperator):
+    train_data = pd.read_csv(train_file_name, sep)
     labels = train_data.Survived
     del train_data['PassengerId']
     return train_data, labels
 
 
+def get_pearson(train_data):
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+    cmap = cm.get_cmap('Spectral', 30)
+    cax = ax.imshow(train_data.corr(), interpolation='nearest', cmap=cmap)
+    print(train_data.corr())
+    ax.grid(True)
+    plt.title('Titanic Feature Correlation')
+    labels = train_data.columns
+    ax.set_xticklabels(labels, fontsize=6)
+    ax.set_yticklabels(labels, fontsize=6)
+    fig.colorbar(cax, ticks=[i * 0.15 for i in range(-6, 10)])
+    plt.show()
+
+
 def analysis_Name(train_data):
     print(train_data.describe(include=['O']))
-    for dataset in train_data:
-        dataset['Title'] = dataset.Name.str.extract(' ([A-Za-z]+)\.',
-                                                    expand=False)
+    for data in train_data:
+        data['Title'] = data.Name.str.extract(' ([A-Za-z]+)\.', expand=False)
 
     pd.crosstab(train_data['Title'], train_data['Sex'])
+
 
 """
     分析 Pclass 是否对 Survived 造成影响
@@ -77,17 +96,5 @@ def analysis_Fare(train_data, num_bins):
 
 if __name__ == "__main__":
     main()
-    # train_df[['Pclass', 'Survived']].groupby(['Pclass'],
-    #                                          as_index=False).mean().sort_values(
-    #     by='Survived', ascending=False)
 
-    #dataset['Sex'] = dataset['Sex'].map( {'female': 1, 'male': 0} ).astype(int)
-# 计算相似性
-#     dcoeff_df = pd.DataFrame(train_df.columns.delete(0))
-# coeff_df.columns = ['Feature']
-# coeff_df["Correlation"] = pd.Series(logreg.coef_[0])
-#
-# coeff_df.sort_values(by='Correlation', ascending=False)
 
-# 计算得分
-# acc_svc = round(svc.score(X_train, Y_train) * 100, 2)

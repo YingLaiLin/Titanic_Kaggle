@@ -38,7 +38,7 @@ cv_bagging_freq = [0]
 """
     最后得到的模型参数
 """
-cv_split_size = 0.07
+cv_split_size = 0.10
 boosting_type = 'gbdt'
 n_estimators = 100
 feature_fraction = 0.9
@@ -57,5 +57,11 @@ bagging_freq = 0
 
 can_plot_tree = False
 can_show_metric = True
-can_grid_search_hyper_params = True
+can_grid_search_hyper_params = False
 can_save_best_params = True
+can_stacking = True
+
+"""
+    Stacking 中的参数
+"""
+stacking_folds = 5
